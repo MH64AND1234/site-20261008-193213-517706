@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🔥 سكوب حراري + كشف أشخاص AI</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;overflow:hidden;background:#000;font-family:"Consolas","Courier New",monospace;color:#0f0;}
+
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000;}
+
+  #scopeWrap{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
+
+  canvas#view{display:block;width:100%;height:100%;object-fit:contain;image-rendering:pixelated;}
+  video#cam{display:none;}
+
+  /* HUD */
+  #hud{position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;padding:14px 18px;font-size:12.5px;letter-spacing:1px;text-shadow:0 0 6px currentColor;}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
+  .row.bottom{align-items:flex-end;}
+
+  .tag{background:rgba(0,0,0,.55);border:1px solid rgba(0,255,80,.45);padding:5px 11px;border-radius:4px;color:#00ff66;font-weight:700;backdrop-filter:blur(3px);white-space:nowrap;font-size:11.5px;}
+  .tag.red{color:#ff4040;border-color:rgba(255,64,64,.55);animation:pulse 1s infinite;}
+  .tag.amber{color:#ffb100;border-color:rgba(255,177,0,.55);}
+  @keyframes pulse{50%{opacity:.5;}}
+
+  /* Reticle */
+  #reticle{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(78vmin,600px);height:min(78vmin,600px);pointer-events:none;}
+  #reticle svg{width:100%;height:100%;}
+  #reticle .line{stroke:#00ff66;stroke-width:1.4;fill:none;opacity:.85;filter:drop-shadow(0 0 4px #00ff66);}
+  #reticle .thin{stroke-width:.9;opacity:.55;}
+  #reticle .center{fill:#00ff66;opacity:.95;filter:drop-shadow(0 0 6px #00ff66);}
+
+  #vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 50%,transparent 0%,transparent 38%,rgba(0,0,0,.25) 52%,rgba(0,0,0,.85) 72%,rgba(0,0,0,1) 100%);}
+
+  #scanlines{position:absolute;inset:0;pointer-events:none;opacity:.14;background:repeating-linear-gradient(0deg,rgba(0,255,80,.35) 0 1px,transparent 1px 3px);animation:scan 8s linear infinite;}
+  @keyframes scan{from{background-position-y:0;}to{background-position-y:300px;}}
+
+  #recDot{position:absolute;top:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px;color:#ff4040;font-size:12px;font-weight:700;letter-spacing:2px;text-shadow:0 0 8px #ff4040;}
+  #recDot::before{content:"";width:9px;height:9px;border-radius:50%;background:#ff2020;box-shadow:0 0 10px #ff2020;animation:blink 1.1s steps(2) infinite;}
+  @keyframes blink{50%{opacity:.15;}}
+
+  /* لوحة تحكم */
+  #controls{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(180deg,transparent,rgba(0,0,0,.9) 30%,#000 100%);padding:14px 16px calc(14px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;transition:transform .3s ease,opacity .3s ease;z-index:10;}
+  #controls.hidden{transform:translateY(110%);opacity:0;}
+
+  .palette-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
+  .pal-btn{font-family:inherit;font-size:11.5px;font-weight:700;letter-spacing:.5px;padding:8px 12px;border-radius:6px;cursor:pointer;background:rgba(0,255,80,.08);border:1px solid rgba(0,255,80,.35);color:#00ff66;transition:.2s;}
+  .pal-btn.active{background:#00ff66;color:#000;box-shadow:0 0 18px rgba(0,255,102,.7);}
+
+  .slider-row{display:flex;align-items:center;gap:12px;}
+  .slider-row label{font-size:11px;color:#00ff66;min-width:60px;letter-spacing:.5px;}
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:4px;background:rgba(0,255,80,.2);border-radius:99px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#00ff66;box-shadow:0 0 10px #00ff66;cursor:pointer;border:2px solid #000;}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#00ff66;border:2px solid #000;cursor:pointer;}
+
+  .btn-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
+  .main-btn{font-family:inherit;font-size:13px;font-weight:800;letter-spacing:.5px;padding:11px 20px;border-radius:8px;cursor:pointer;background:linear-gradient(180deg,#00ff66,#00b347);border:none;color:#001a0c;transition:.2s;box-shadow:0 0 20px rgba(0,255,102,.4);}
+  .main-btn:active{transform:scale(.97);}
+  .main-btn.off{background:linear-gradient(180deg,#ff4040,#a00);color:#fff;box-shadow:0 0 20px rgba(255,64,64,.4);}
+  .main-btn.ai{background:linear-gradient(180deg,#00b3ff,#0066cc);color:#fff;box-shadow:0 0 20px rgba(0,179,255,.4);}
+  .ghost-btn{font-family:inherit;font-size:12px;font-weight:700;padding:10px 14px;border-radius:8px;cursor:pointer;background:rgba(0,255,80,.1);border:1px solid rgba(0,255,80,.35);color:#00ff66;}
+  .ghost-btn.ai{border-color:rgba(0,179,255,.5);color:#00b3ff;background:rgba(0,179,255,.1);}
+  .ghost-btn.ai.on{background:#00b3ff;color:#fff;}
+
+  #toggleUI{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(100% + 8px);width:44px;height:22px;border-radius:11px 11px 0 0;background:rgba(0,255,80,.15);border:1px solid rgba(0,255,80,.4);border-bottom:none;cursor:pointer;z-index:11;color:#00ff66;font-size:14px;line-height:1;padding:0;}
+
+  /* شاشة تحميل الموديل */
+  #loading{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:rgba(0,0,0,.88);color:#00b3ff;z-index:20;text-align:center;padding:24px;}
+  #loading.show{display:flex;}
+  #loading h2{font-size:16px;letter-spacing:1.5px;}
+  #loading p{font-size:12px;color:#88ccff;}
+  .spinner{width:50px;height:50px;border:3px solid rgba(0,179,255,.2);border-top-color:#00b3ff;border-radius:50%;animation:spin 1s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  #noCam{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(0,0,0,.85);color:#ff6060;text-align:center;padding:24px;}
+  #noCam.show{display:flex;}
+  #noCam h2{font-size:17px;letter-spacing:1px;}
+  #noCam p{font-size:12px;color:#ff9999;max-width:320px;line-height:1.7;}
+
+  .readout{display:flex;flex-direction:column;align-items:flex-start;gap:3px;}
+  .readout .v{font-size:15px;color:#00ff66;font-weight:800;}
+  .readout .v.ai{color:#00b3ff;}
+  .readout .k{font-size:10px;color:rgba(0,255,80,.6);letter-spacing:1.5px;}
+  .readout .k.ai{color:rgba(0,179,255,.7);}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="scopeWrap">
+    <video id="cam" playsinline muted autoplay></video>
+    <canvas id="view"></canvas>
+
+    <div id="scanlines"></div>
+    <div id="vignette"></div>
+
+    <div id="reticle">
+      <svg viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet">
+        <circle class="line thin" cx="200" cy="200" r="170"/>
+        <circle class="line thin" cx="200" cy="200" r="120"/>
+        <path class="line" d="M30,70 L30,30 L70,30"/>
+        <path class="line" d="M330,30 L370,30 L370,70"/>
+        <path class="line" d="M370,330 L370,370 L330,370"/>
+        <path class="line" d="M70,370 L30,370 L30,330"/>
+        <path class="line" d="M200,60 L200,155"/>
+        <path class="line" d="M200,245 L200,340"/>
+        <path class="line" d="M60,200 L155,200"/>
+        <path class="line" d="M245,200 L340,200"/>
+        <path class="line thin" d="M185,110 L215,110"/>
+        <path class="line thin" d="M185,80 L215,80"/>
+        <path class="line thin" d="M110,185 L110,215"/>
+        <path class="line thin" d="M140,185 L140,215"/>
+        <circle class="center" cx="200" cy="200" r="3.5"/>
+        <circle class="line thin" cx="200" cy="200" r="10"/>
+      </svg>
+    </div>
+
+    <div id="hud">
+      <div class="row">
+        <div class="tag" id="modeTag">🔥 حراري</div>
+        <div class="tag" id="palTag">IRON</div>
+        <div class="tag amber" id="fpsTag">0 FPS</div>
+      </div>
+
+      <div id="recDot">REC</div>
+
+      <div class="row bottom">
+        <div class="readout">
+          <span class="k">ZOOM</span>
+          <span class="v" id="zoomOut">1.0×</span>
+        </div>
+        <div class="tag red" id="statusTag" style="display:none;">👤 0 شخص</div>
+        <div class="tag" id="statusTag2">جاهز</div>
+        <div class="readout ai" style="align-items:flex-end;">
+          <span class="k ai">AI CONF</span>
+          <span class="v ai" id="confOut">--%</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="loading">
+      <div class="spinner"></div>
+      <h2>⏳ جاري تحميل موديل الذكاء الاصطناعي…</h2>
+      <p>يتم تحميل COCO-SSD (~6MB) — يحتاج اتصال إنترنت أول مرة فقط</p>
+    </div>
+
+    <div id="noCam">
+      <h2>⚠ تعذّر الوصول للكاميرا</h2>
+      <p>افتح الصفحة من متصفح خارجي (Chrome / Safari) واسمح بالوصول للكاميرا.</p>
+    </div>
+  </div>
+
+  <div id="controls">
+    <button id="toggleUI">⌄</button>
+
+    <div class="palette-row">
+      <button class="pal-btn active" data-pal="iron">🔥 IRON</button>
+      <button class="pal-btn" data-pal="rainbow">🌈 RAINBOW</button>
+      <button class="pal-btn" data-pal="white">⚪ WHITE-HOT</button>
+      <button class="pal-btn" data-pal="black">⚫ BLACK-HOT</button>
+      <button class="pal-btn" data-pal="lava">🌋 LAVA</button>
+    </div>
+
+    <div class="slider-row">
+      <label>حساسية</label>
+      <input type="range" id="gain" min="40" max="260" value="130">
+    </div>
+
+    <div class="slider-row">
+      <label>تقريرب</label>
+      <input type="range" id="zoom" min="10" max="400" value="100">
+    </div>
+
+    <div class="btn-row">
+      <button class="main-btn off" id="startBtn">▶ تشغيل</button>
+      <button class="ghost-btn ai" id="aiBtn">🤖 AI: مغلق</button>
+      <button class="ghost-btn" id="swapBtn">🔄</button>
+      <button class="ghost-btn" id="snapBtn">📷</button>
+    </div>
+  </div>
+</div>
+
+<!-- TensorFlow.js + COCO-SSD -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+
+<script>
+(() => {
+"use strict";
+
+/* ============ العناصر ============ */
+const video   = document.getElementById('cam');
+const canvas  = document.getElementById('view');
+const ctx     = canvas.getContext('2d');
+const startBtn= document.getElementById('startBtn');
+const aiBtn   = document.getElementById('aiBtn');
+const swapBtn = document.getElementById('swapBtn');
+const snapBtn = document.getElementById('snapBtn');
+const gainEl  = document.getElementById('gain');
+const zoomEl  = document.getElementById('zoom');
+const zoomOut = document.getElementById('zoomOut');
+const fpsTag  = document.getElementById('fpsTag');
+const palTag  = document.getElementById('palTag');
+const statusTag=document.getElementById('statusTag');
+const statusTag2=document.getElementById('statusTag2');
+const confOut = document.getElementById('confOut');
+const modeTag = document.getElementById('modeTag');
+const noCam   = document.getElementById('noCam');
+const loading = document.getElementById('loading');
+const controls= document.getElementById('controls');
+const toggleUI= document.getElementById('toggleUI');
+
+/* ============ ثوابت ============ */
+const SW = 480, SH = 360;
+const proc = document.createElement('canvas');
+proc.width = SW; proc.height = SH;
+const pctx = proc.getContext('2d', { willReadFrequently:true });
+let imgData = pctx.createImageData(SW, SH);
+
+/* ============ الحالة ============ */
+let stream=null, running=false;
+let facing='environment', mirrored=false;
+let palette='iron', gain=130, zoom=1.0;
+let aiEnabled=false, aiModel=null, aiLoading=false;
+let detections=[]; // كشوفات AI
+let lastDetectTime=0;
+const DETECT_INTERVAL = 250; // ms بين كل عملية كشف (لا نكشف كل فريم)
+let lastT = performance.now();
+let fpsN=0, fpsT=0, sweep=0;
+let lastConf = 0;
+
+/* ============ LUT ============ */
+function makeLUT(stops){
+  const lut = new Uint8ClampedArray(256*3);
+  for(let i=0;i<256;i++){
+    const t = i/255;
+    let s0=stops[0], s1=stops[stops.length-1];
+    for(let k=0;k<stops.length-1;k++){
+      if(t>=stops[k][0] && t<=stops[k+1][0]){ s0=stops[k]; s1=stops[k+1]; break; }
+    }
+    const span=(s1[0]-s0[0])||1, f=(t-s0[0])/span;
+    lut[i*3]  = s0[1] + (s1[1]-s0[1]) * f;
+    lut[i*3+1]= s0[2] + (s1[2]-s0[2]) * f;
+    lut[i*3+2]= s0[3] + (s1[3]-s0[3]) * f;
+  }
+  return lut;
+}
+const PALETTES = {
+  iron: makeLUT([[0,0,0,0],[0.15,30,0,60],[0.35,130,0,80],[0.55,210,35,10],[0.72,255,130,0],[0.88,255,220,70],[1,255,255,240]]),
+  rainbow: makeLUT([[0,0,0,20],[0.15,0,40,160],[0.35,0,180,200],[0.5,40,220,100],[0.65,200,230,30],[0.8,255,140,0],[1,255,30,30]]),
+  white: makeLUT([[0,0,0,0],[0.5,128,128,128],[1,255,255,255]]),
+  black: makeLUT([[0,255,255,255],[0.5,128,128,128],[1,0,0,0]]),
+  lava: makeLUT([[0,10,0,0],[0.3,100,0,10],[0.55,220,40,0],[0.78,255,150,20],[1,255,245,190]])
+};
+let LUT = PALETTES.iron;
+
+/* ============ Canvas ============ */
+function resizeCanvas(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = Math.round(rect.width  * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  ctx.imageSmoothingEnabled = false;
+}
+window.addEventListener('resize', resizeCanvas);
+setTimeout(resizeCanvas, 50);
+
+/* ============ تحميل موديل AI ============ */
+async function loadAI(){
+  if(aiModel) return true;
+  if(aiLoading) return false;
+  aiLoading = true;
+  loading.classList.add('show');
+  try{
+    aiModel = await cocoSsd.load({ base:'lite_mobilenet_v2' });
+    loading.classList.remove('show');
+    aiLoading = false;
+    return true;
+  }catch(e){
+    loading.classList.remove('show');
+    aiLoading = false;
+    aiBtn.textContent = '❌ فشل التحميل';
+    console.warn('AI load failed:', e);
+    return false;
+  }
+}
+
+aiBtn.onclick = async () => {
+  if(aiEnabled){
+    aiEnabled = false;
+    aiBtn.textContent = '🤖 AI: مغلق';
+    aiBtn.classList.remove('on');
+    statusTag.style.display = 'none';
+    detections = [];
+    return;
+  }
+  aiBtn.textContent = '⏳ جاري التحميل…';
+  const ok = await loadAI();
+  if(ok){
+    aiEnabled = true;
+    aiBtn.textContent = '🤖 AI: مفتوح';
+    aiBtn.classList.add('on');
+    statusTag.style.display = 'block';
+  }else{
+    aiBtn.textContent = '🤖 AI: مغلق';
+  }
+};
+
+/* ============ كاميرا ============ */
+async function startCam(){
+  if(!navigator.mediaDevices?.getUserMedia){ noCam.classList.add('show'); return; }
+  try{
+    stopCam();
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:facing, width:{ideal:1280}, height:{ideal:720} },
+      audio:false
+    });
+    video.srcObject = stream;
+    await video.play();
+    mirrored = (facing === 'user');
+    running = true;
+    noCam.classList.remove('show');
+    startBtn.textContent = '⏹ إيقاف';
+    startBtn.classList.add('off');
+    statusTag2.textContent = 'يعمل';
+    statusTag2.style.display = 'block';
+  }catch(e){
+    noCam.classList.add('show');
+    running = false;
+    startBtn.textContent = '▶ تشغيل';
+    startBtn.classList.remove('off');
+  }
+}
+function stopCam(){
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  video.srcObject = null;
+}
+function stopAll(){
+  running=false; stopCam();
+  noCam.classList.remove('show');
+  startBtn.textContent = '▶ تشغيل';
+  startBtn.classList.add('off');
+  statusTag2.textContent = 'جاهز';
+  detections = [];
+}
+
+/* ============ أزرار ============ */
+startBtn.onclick = () => { if(running) stopAll(); else startCam(); };
+swapBtn.onclick = () => {
+  facing = facing === 'environment' ? 'user' : 'environment';
+  if(running) startCam();
+};
+snapBtn.onclick = () => {
+  const a = document.createElement('a');
+  a.download = 'thermal_ai_' + Date.now() + '.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+};
+document.querySelectorAll('.pal-btn').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.pal-btn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    palette = b.dataset.pal;
+    LUT = PALETTES[palette];
+    palTag.textContent = b.textContent.trim().split(' ')[1] || palette.toUpperCase();
+  };
+});
+gainEl.oninput = () => gain = +gainEl.value;
+zoomEl.oninput = () => { zoom = +zoomEl.value / 100; zoomOut.textContent = zoom.toFixed(1) + '×'; };
+toggleUI.onclick = () => {
+  controls.classList.toggle('hidden');
+  toggleUI.textContent = controls.classList.contains('hidden') ? '⌃' : '⌄';
+};
+
+/* ============ كشف AI ============ */
+async function runDetection(){
+  if(!aiEnabled || !aiModel || !running) return;
+  try{
+    const preds = await aiModel.detect(video, 8);
+    // فلتر: نبي شخص فقط (class 0 = person في COCO)
+    detections = preds.filter(p => p.class === 'person' && p.score > 0.45);
+    if(detections.length){
+      lastConf = Math.max(...detections.map(d=>d.score));
+    }else{
+      lastConf = 0;
+    }
+  }catch(e){ /* تجاهل */ }
+}
+
+/* ============ معالجة الإطار ============ */
+function processFrame(now){
+  const dt = (now - lastT) / 1000;
+  lastT = now;
+
+  const vw = video.videoWidth || SW;
+  const vh = video.videoHeight || SH;
+
+  // رسم الفيديو (مقلوب إذا أمامية)
+  pctx.save();
+  if(mirrored){ pctx.translate(SW,0); pctx.scale(-1,1); }
+  const z = Math.max(1, zoom);
+  const cw = vw / z, ch = vh / z;
+  const sx = (vw - cw) / 2, sy = (vh - ch) / 2;
+  try{ pctx.drawImage(video, sx, sy, cw, ch, 0, 0, SW, SH); }catch(e){}
+  pctx.restore();
+
+  // تحويل حراري
+  const id = pctx.getImageData(0, 0, SW, SH);
+  const buf = id.data;
+  const g = gain / 100;
+  for(let i=0;i<buf.length;i+=4){
+    let lum = buf[i]*0.299 + buf[i+1]*0.587 + buf[i+2]*0.114;
+    lum = 255 / (1 + Math.exp(-(lum * g - 128) / 42));
+    const idx = (lum | 0) * 3;
+    buf[i]   = LUT[idx];
+    buf[i+1] = LUT[idx+1];
+    buf[i+2] = LUT[idx+2];
+  }
+  pctx.putImageData(id, 0, 0);
+
+  // رسم على الكانفس الرئيسي
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(proc, 0, 0, canvas.width, canvas.height);
+
+  // رسم صناديق AI (بعد التحويل حتى تكون فوق الحراري)
+  if(aiEnabled && detections.length){
+    drawDetections();
+  }
+
+  // FPS
+  fpsN++; fpsT += dt;
+  if(fpsT >= 0.5){
+    fpsTag.textContent = Math.round(fpsN/fpsT) + ' FPS';
+    fpsN = 0; fpsT = 0;
+  }
+
+  // تحديث HUD
+  if(aiEnabled){
+    statusTag.textContent = '👤 ' + detections.length + ' شخص';
+    statusTag.style.display = 'block';
+    confOut.textContent = detections.length ? Math.round(lastConf*100) + '%' : '--%';
+  }else{
+    statusTag.style.display = 'none';
+    confOut.textContent = '--%';
+  }
+}
+
+/* ============ رسم كشوفات AI ============ */
+function drawDetections(){
+  const vw = video.videoWidth || SW;
+  const vh = video.videoHeight || SH;
+  const cw = canvas.width, ch = canvas.height;
+
+  // نسبة العرض
+  const scaleX = cw / vw;
+  const scaleY = ch / vh;
+
+  // مراعاة الزوم والانعكاس
+  const z = Math.max(1, zoom);
+  const cropX = (vw - vw/z) / 2;
+  const cropY = (vh - vh/z) / 2;
+
+  for(const det of detections){
+    const [bx, by, bw, bh] = det.bbox;
+
+    // تطبيق الزوم (نسبة الإحداثيات داخل منطقة القص)
+    let x = (bx - cropX) * z * scaleX;
+    let y = (by - cropY) * z * scaleY;
+    let w = bw * z * scaleX;
+    let h = bh * z * scaleY;
+
+    // انعكاس أفقي لو الكاميرا أمامية
+    if(mirrored){
+      x = cw - x - w;
+    }
+
+    // صندوق أزرق للشخص
+    ctx.save();
+    ctx.strokeStyle = '#00b3ff';
+    ctx.lineWidth = Math.max(2, cw/480 * 2.5);
+    ctx.shadowColor = '#00b3ff';
+    ctx.shadowBlur = 12;
+    ctx.strokeRect(x, y, w, h);
+
+    // زوايا مميزة
+    const corner = Math.min(w,h) * 0.18;
+    ctx.lineWidth = Math.max(3, cw/480 * 4);
+    ctx.strokeStyle = '#00e6ff';
+    // أعلى يسار
+    ctx.beginPath(); ctx.moveTo(x, y+corner); ctx.lineTo(x,y); ctx.lineTo(x+corner,y); ctx.stroke();
+    // أعلى يمين
+    ctx.beginPath(); ctx.moveTo(x+w-corner, y); ctx.lineTo(x+w,y); ctx.lineTo(x+w,y+corner); ctx.stroke();
+    // أسفل يسار
+    ctx.beginPath(); ctx.moveTo(x, y+h-corner); ctx.lineTo(x,y+h); ctx.lineTo(x+corner,y+h); ctx.stroke();
+    // أسفل يمين
+    ctx.beginPath(); ctx.moveTo(x+w-corner, y+h); ctx.lineTo(x+w,y+h); ctx.lineTo(x+w,y+h-corner); ctx.stroke();
+
+    // تسمية
+    const label = `👤 ${Math.round(det.score*100)}%`;
+    ctx.font = `bold ${Math.max(11, cw/480 * 13)}px Consolas, monospace`;
+    const tw = ctx.measureText(label).width + 12;
+    const th = Math.max(18, cw/480 * 20);
+    ctx.fillStyle = 'rgba(0,179,255,0.85)';
+    ctx.fillRect(x, y - th - 2, tw, th);
+    ctx.fillStyle = '#fff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + 6, y - th/2 - 2);
+
+    // خط من مركز الصندوق للمركز (يظهر الاتجاه)
+    ctx.strokeStyle = 'rgba(0,230,255,0.35)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    ctx.moveTo(x + w/2, y + h/2);
+    ctx.lineTo(cw/2, ch/2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // نقطة حرارية بلون أحمر دافئ في مركز الجسم
+    const cx = x + w/2;
+    const cy = y + h/2;
+    const rg = ctx.createRadialGradient(cx, cy, 2, cx, cy, Math.min(w,h)*0.35);
+    rg.addColorStop(0, 'rgba(255,80,0,0.55)');
+    rg.addColorStop(1, 'rgba(255,80,0,0)');
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.min(w,h)*0.35, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+/* ============ حلقة ============ */
+function loop(now){
+  requestAnimationFrame(loop);
+
+  if(!running){
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    sweep = (sweep + 0.02) % 1;
+    ctx.strokeStyle = 'rgba(0,255,80,0.15)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, sweep * canvas.height);
+    ctx.lineTo(canvas.width, sweep * canvas.height);
+    ctx.stroke();
+    return;
+  }
+
+  processFrame(now);
+
+  // كشف AI كل فترة (مو كل فريم)
+  if(aiEnabled && aiModel && now - lastDetectTime > DETECT_INTERVAL){
+    lastDetectTime = now;
+    runDetection(); // async بدون انتظار
+  }
+}
+
+requestAnimationFrame((t)=>{ lastT = t; loop(t); });
+
+})();
+</script>
+</body>
+</html>
